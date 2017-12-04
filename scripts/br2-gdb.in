@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+#
+# br2-gdb - GDB wrapper for Buildroot
+#
+# Copyright (C) 2017 Eric Le Bihan <eric.le.bihan.dev@free.fr>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
+set -e
+
+__VERSION__=@VERSION@
+
+BR2_BASE_DIR=output
+GDB_PORT=1234
+GDB_OPTS="-q -n -f"
+PRINT_CMD=
+
+die() {
+    echo "FATAL: $1" 2>&1
+    exit 111
+}
+
+find_gdb() {
+    find "$1/host/bin" ! -type l -name '*-gdb'
+}
+
+find_exec_target() {
+    local -a paths=(
+        $1/target/bin
+        $1/target/sbin
+        $1/target/usr/bin
+        $1/target/usr/sbin
+    )
+    local path=$(find  "${paths[@]}" -executable -name $2)
+    echo "${path/$1\/target}"
+}
+
+find_exec_debug() {
+    find "$1/build" -executable -name $2
+}
+
+check_basedir() {
+    local basedir=$1
+    local execfile=$2
+    local config="${basedir}/.config"
+
+    if [ ! -d "${basedir}" ]; then
+        die "Invalid Buildroot base directory"
+    fi
+
+    if ! grep -q BR2_ENABLE_DEBUG=y "${config}"; then
+        die "Building debug binaries is not enabled"
+    fi
+
+    if ! grep -q BR2_PACKAGE_GDB_SERVER=y "${config}"; then
+        die "GDB server is not available on the target"
+    fi
+
+    if [ -z "$(find_gdb ${basedir})" ]; then
+        die "Can not find cross-compiled GDB"
+    fi
+
+    if [ -z "$(find_exec_target ${basedir} ${execfile})" ]; then
+        die "Can not find target executable"
+    fi
+}
+
+gen_gdb_file() {
+    local basedir=$1
+    local address=$2
+    local exec_name=$3
+    local exec_args=${@:4}
+    local exec_target=$(find_exec_target "${basedir}" "${exec_name}")
+    local exec_debug=$(find_exec_debug "${basedir}" "${exec_name}")
+    local gdb_file="${basedir}/.br2-gdb"
+    local -a searchpaths=(
+        "${basedir}/staging/lib"
+        "${basedir}/staging/usr/lib"
+    )
+    searchpaths=$(printf ":%s" "${searchpaths[@]}")
+    searchpaths=${searchpaths:1}
+
+    if [ -z "${exec_debug}" ]; then
+        die "Can not find debug executable"
+    fi
+
+    cat <<EOF >"${gdb_file}"
+set confirm off
+set solib-absolute-prefix nonexistant
+set solib-search-path ${searchpaths}
+file ${exec_debug}
+target extended-remote ${address}:${GDB_PORT}
+set remote exec-file ${exec_target}
+break main
+run ${exec_args}
+EOF
+    echo "${gdb_file}"
+}
+
+run_gdb() {
+    local basedir=$1
+    local fn=$2
+    local gdb=$(find_gdb "${basedir}")
+
+    "${gdb}" ${GDB_OPTS} -x "${fn}"
+}
+
+usage() {
+    cat<<EOF
+Usage: $(basename $0) [OPTIONS] <address> <executable> [<arg>, ...]
+
+Options:
+  -h        Show this help message
+  -v        Show version information
+  -i DIR    Set Buildroot base directory (default: ${BR2_BASE_DIR})
+  -p PORT   Set GDB server port (default: ${GDB_PORT})
+  -P        Print command line for GNU/Emacs gud-mode
+EOF
+}
+
+while getopts "hvi:p:P" option; do
+    case ${option} in
+        h)
+            usage; exit 0
+            ;;
+        v)
+            echo ${__VERSION__}; exit 0
+            ;;
+        i)
+            BR2_BASE_DIR=${OPTARG}
+            ;;
+        p)
+            GDB_PORT=${OPTARG}
+            ;;
+        P)
+            PRINT_CMD=yes
+            ;;
+        *)
+            echo "Unknown option" >&2; exit 1
+            ;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+if [ $# -lt 2 ]; then
+    usage
+    exit 1
+fi
+
+address=$1
+exec=$2
+
+check_basedir "${BR2_BASE_DIR}" "${exec}"
+fn=$(gen_gdb_file "${BR2_BASE_DIR}" "${address}" "${exec}" "${@:3}")
+if [ -n "${PRINT_CMD}" ]; then
+    gdb=$(find_gdb "${BR2_BASE_DIR}")
+    echo "${gdb} -i=mi -x ${fn}"
+else
+    cat <<EOF
+Execute 'gdbserver --multi :${GDB_PORT}' on the target.
+Press [ENTER] key when ready
+EOF
+
+    read
+    run_gdb "${BR2_BASE_DIR}" "${fn}"
+fi
+
+# vim: ts=4 sts=4 sw=4 et ai

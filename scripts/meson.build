@@ -1,5 +1,6 @@
 in_scripts = [
   'announce-release',
+  'br2-gdb',
   'distribute-release',
   'gen-icon-theme',
   'totoconf',
