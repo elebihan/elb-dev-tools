@@ -1,6 +1,7 @@
 in_scripts = [
   'announce-release',
   'distribute-release',
+  'totoconf',
 ]
 
 foreach script : in_scripts

@@ -1,0 +1,237 @@
+#!/bin/sh
+#
+# totoconf - generate simple configuration script
+#
+# Copyright (C) 2017 Eric Le Bihan <eric.le.bihan.dev@free.fr>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
+__VERSION__=@VERSION@
+
+DESTDIR=$PWD
+
+usage() {
+    cat<<EOF
+Usage: $(basename $0) [OPTIONS] <filename>
+
+Options:
+  -h        Show this help message
+  -v        Show version information
+  -O DIR    Set output directory
+EOF
+}
+
+while getopts "hvO:" option; do
+    case ${option} in
+        h)
+            usage; exit 0
+            ;;
+        v)
+            echo ${__VERSION__}; exit 0
+            ;;
+        O)
+            DESTDIR=${OPTARG}
+            ;;
+        *)
+            echo "Unknown option" >&2; exit 1
+            ;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+if [ $# -ne 1 ]; then
+    usage
+    exit 2
+fi
+
+output="${DESTDIR}/configure"
+h_dependencies=$(mktemp $(basename $0).XXXXX)
+h_features=$(mktemp $(basename $0).XXXXX)
+a_options=$(mktemp $(basename $0).XXXXX)
+d_options=$(mktemp $(basename $0).XXXXX)
+v_options=$(mktemp $(basename $0).XXXXX)
+
+while IFS=, read kind option description value metavar; do
+    svar=$(echo ${option} | sed -e 's/with-//' -e 's/-/_/g')
+    mvar=$(echo ${svar} | tr '[:lower:]' '[:upper:]')
+    case "${kind}" in
+        d)
+            printf "  %-40s${description}\n" "--${option}=${metavar}" \
+                   >> "${h_dependencies}"
+            echo "    --${option}=*) ${svar}=\${arg#*=} ;;" >> "${a_options}"
+            echo ": \${${svar}:=${value}}" >> "${d_options}"
+            echo "${mvar} := \${${svar}}" >> "${v_options}"
+            ;;
+        o)
+            printf "  %-40s${description}\n" "--${option}" >> "${h_features}"
+            echo "    --${option}) ${svar}=y ;;" >> "${a_options}"
+            echo ": \${${svar}:=n}" >> "${d_options}"
+            echo "${mvar} := \${${svar}}" >> "${v_options}"
+            ;;
+        O)
+            printf "  %-40s${description}\n" "--${option}=${metavar}" \
+                   >> "${h_features}"
+            echo "    --${option}=*) ${svar}=\${arg#*=} ;;" >> "${a_options}"
+            echo ": \${${svar}:=${value}}" >> "${d_options}"
+            echo "${mvar} := \${${svar}}" >> "${v_options}"
+            ;;
+        \#*)
+            ;;
+    esac
+done < $1
+
+test -s "${h_dependencies}" && sed -i '1s%^%\nDependencies:\n%' "${h_dependencies}"
+test -s "${h_features}" && sed -i '1s%^%\nOptional features:\n%' "${h_features}"
+
+cat <<EOC >"${output}"
+#!/bin/sh
+
+usage () {
+  cat <<EOF
+Usage: \$(basename \$0) [OPTION]...
+
+Defaults for the options are specified in brackets.
+
+Configuration:
+  -h, --help              display this help and exit
+
+Installation directories:
+  --prefix=PREFIX         install architecture-independent files in PREFIX
+                          [/usr/local]
+  --exec-prefix=EPREFIX   install architecture-dependent files in EPREFIX
+                          [PREFIX]
+
+Fine tuning of the installation directories:
+  --bindir=DIR            user executables [EPREFIX/bin]
+  --sbindir=DIR           system admin executables [EPREFIX/sbin]
+  --libexecdir=DIR        program executables [EPREFIX/libexec]
+  --sysconfdir=DIR        read-only single-machine data [PREFIX/etc]
+  --localstatedir=DIR     modifiable single-machine data [PREFIX/var]
+  --libdir=DIR            object code libraries [EPREFIX/lib]
+  --includedir=DIR        C header files [PREFIX/include]
+  --datadir=DIR           read-only architecture-independent data [PREFIX/share]
+
+System types:
+  --build=BUILD           configure for building on BUILD [guessed]
+  --host=HOST             cross-compile to build programs to run on HOST [BUILD]
+$(cat ${h_features})
+$(cat ${h_dependencies})
+
+Some influential environment variables:
+  CC          C compiler command
+EOF
+  exit 0
+}
+
+for arg ; do
+  case "\$arg" in
+    --help) usage ;;
+    --prefix=*) prefix=\${arg#*=} ;;
+    --exec-prefix=*) eprefix=\${arg#*=} ;;
+    --bindir=*) bindir=\${arg#*=} ;;
+    --sbindir=*) sbindir=\${arg#*=} ;;
+    --libexecdir=*) libexecdir=\${arg#*=} ;;
+    --sysconfdir=*) sysconfdir\${arg#*=} ;;
+    --localstatedir=*) localestatedir\${arg#*=} ;;
+    --libdir=*) libdir=\${arg#*=} ;;
+    --includedir=*) includedir=\${arg#*=} ;;
+    --datadir=*) datadir=\${arg#*=} ;;
+    --host=*|--target=*) target=\${arg#*=} ;;
+    --build=*) build=\${arg#*=} ;;
+$(cat ${a_options})
+    -* ) echo "\$0: unknown option \$arg" ;;
+    *=*) ;;
+    *) target=\$arg ;;
+  esac
+done
+
+if [ -z "\${build}" ]; then
+    build=\$(uname -m)-unknown-$(uname -s | tr '[:upper:]' '[:lower:]')
+fi
+
+if [ -z "\${host}" ]; then
+    [ -z "\${target}" ] && target=\${build}
+    host=\${target}
+fi
+
+if [ -z "\${target}" ]; then
+    [ -z "\${host}" ] && host=\${build}
+    target=\${host}
+fi
+
+if [ -z "\$CC" ]; then
+    printf "Looking for compiler ... "
+    for b in \${target}- ""; do
+        for cc in gcc pcc icc cc lang; do
+            if type \$b\$cc > /dev/null 2>&1; then
+                CC=\$b\$cc
+                echo "\$CC"
+                break
+            fi
+        done
+        [ -n "\$CC" ] && break
+    done
+    if [ -z "\$CC" ]; then
+        echo
+        echo "no suitable compiler found" >&2
+        exit 1
+    fi
+else
+    echo "using compiler \$CC"
+fi
+
+: \${prefix:=/usr/local}
+: \${eprefix:=\${prefix}}
+: \${bindir:=\${eprefix}/bin}
+: \${sbindir:=\${eprefix}/sbin}
+: \${libexecdir:=\${eprefix}/libexec}
+: \${sysconfdir:=\${prefix}/etc}
+: \${localstatedir:=\${prefix}/var}
+: \${libdir:=\${eprefix}/lib}
+: \${includedir:=\${eprefix}/include}
+: \${datadir:=\${prefix}/share}
+
+$(cat ${d_options})
+
+cat <<EOF >config.mk
+#
+# Generated file. DO NOT EDIT!
+#
+
+prefix := \${prefix}
+bindir := \${bindir}
+sbindir := \${sbindir}
+libexecdir := \${libexecdir}
+sysconfdir := \${sysconfdir}
+localstatedir := \${localstatedir}
+libdir := \${libdir}
+includedir := \${includedir}
+datadir := \${datadir}
+
+$(cat ${v_options})
+
+CC ?= \${CC}
+
+EOF
+EOC
+
+chmod +x "${output}"
+
+rm -f "${h_dependencies}" "${h_features}"
+rm -f "${a_options}" "${d_options}" "${v_options}"
+
+
+# vim: ts=4 sts=4 sw=4 et ai
