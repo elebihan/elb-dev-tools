@@ -4,6 +4,7 @@ in_scripts = [
   'distribute-release',
   'gen-icon-theme',
   'totoconf',
+  'usage2mdman',
 ]
 
 foreach script : in_scripts

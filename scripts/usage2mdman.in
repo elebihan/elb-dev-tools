@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+#
+# usage2mdman - generate Markdown MAN page from usage help text
+#
+# Copyright (C) 2017 Eric Le Bihan <eric.le.bihan.dev@free.fr>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
+__VERSION__=@VERSION@
+
+COMPLEX=
+DESTDIR=$PWD
+DESCRIPTION_SHORT=
+DESCRIPTION_LONG="Insert long description here"
+TITLE="General Commands Manual"
+
+declare -a AUTHORS
+
+gen_man_pages_complex() {
+    local files=(${@})
+    local progs=$(mktemp -t $(basename $0).XXXXXX)
+    local -A backends
+    local -a selection tools
+
+    echo "${files[@]}" | tr ' ' '\n' > "${progs}"
+
+    for file in ${files[@]}; do
+        tool=$(basename ${file%%.in})
+        index=0
+        for b in $(grep "${tool}-.\+" "${progs}"); do
+            backends+=(["${file}:${index}"]="${b}")
+            index=$((index + 1))
+        done
+    done
+
+    tools=($(comm -23 \
+                  <(for f in "${files[@]}"; do echo "${f}"; done | sort) \
+                  <(for f in "${backends[@]}"; do echo "${f}"; done | sort) \
+           ))
+
+    for file in ${tools[@]}; do
+        selection=($(for key in ${!backends[@]}; do
+                         if grep -q "${file}" <<< "${key}"; then
+                             echo ${backends[${key}]}
+                         fi
+                     done
+                   ))
+        if [ ${#selection[@]} -ne 0 ]; then
+            IFS=$'\n'
+            selection=($(sort <<<"${selection[*]}"))
+            unset IFS
+            gen_man_page_complex "${file}" ${selection[@]} \
+                                 > "${DESTDIR}/$(basename ${file%%.in}.md)"
+        else
+            gen_man_page "${file}" > "${DESTDIR}/$(basename ${file%%.in}.md)"
+        fi
+    done
+
+    rm -f "${progs}"
+}
+
+gen_man_page_complex() {
+    local file=$1
+    local backends=${@:2}
+    local tool=$(basename ${file%%.in})
+
+    gen_man_page "${file}"
+
+    for b in ${backends[@]}; do
+        gen_man_page_backend "${tool}" "${b}"
+    done
+}
+
+gen_man_page_backend() {
+    local tool=$1
+    local backend=$2
+    local name=$(basename $2 | sed -e "s%^${tool}-\(.\+\)%\1%" -e 's/\.in$//')
+
+    printf "\n\n# BACKEND ${name}\n"
+
+    sed -e '1,/^usage()\s\+{$/d;/^}$/,$d' \
+        -e '/^\s\+cat<<EOF/d' \
+        -e '/EOF/d' \
+        -e '/^Usage:\s\+/d' \
+        -e 's/^Options:/## Options\n/' \
+        -e 's/^Commands:/## Commands\n/' \
+        -e "s/\$(basename \$0)/${tool}/g" \
+        -e 's/^\s\+\(-\w\)\s\+\([A-Z]\+\)\s\+\(.\+\)$/\1 *\2*\n:   \3\n/g' \
+        -e 's/^\s\+\(-\w\)\s\+\([<>a-z0-9|]\+\)\s\+\(.\+\)$/\1 *\2*\n:   \3\n/g' \
+        -e 's/^\s\+\(-\w\)\s\+\(.\+\)/\1\n:   \2\n/g' \
+        -e 's/^\s\+\([][a-zA-Z0-9<> |.-]\+\)\s\+\([A-Z][a-z].\+\)$/\1\n:   \2\n/g' \
+        -e '/^Available backends:.*$/,+2d' \
+        -e '/^Hints:.*$/,+2d' \
+        -e 's/<\([\|a-z]\+\)>/\&lt;\1\&gt;/g' \
+        -e 's/\[\(\w\+\)\]/[*\1*]/g' \
+        -e 's/<\(\w\+\)>/<*\1*>/g' \
+        -e '/^Defaults:/d' \
+        -e 's/^Note:/## Note\n/' \
+        "${backend}"
+}
+
+gen_man_pages() {
+    for f in ${@}; do
+        gen_man_page "${f}" > "${DESTDIR}/$(basename ${file%%.in}.md)"
+    done
+}
+
+gen_man_page() {
+    local file=$1
+    local tool=$(basename ${file%%.in})
+
+    cat <<EOF
+% ${tool^^}(1) | ${TITLE}
+% $(gen_authors)
+
+# NAME
+
+${tool} - ${DESCRIPTION_SHORT}
+
+EOF
+
+    sed -e '1,/^usage()\s\+{$/d;/^}$/,$d' \
+        -e 's/^\s\+cat<<EOF/# SYNOPSIS\n/' \
+        -e 's/EOF/\n/' \
+        -e "s/^Usage:\s\+\(.\+\)$/\1\n\n# DESCRIPTION\n\n${DESCRIPTION_LONG}\n/" \
+        -e 's/^Options:/# OPTIONS\n/' \
+        -e 's/^Commands:/# COMMANDS\n/' \
+        -e "s/\$(basename \$0)/${tool}/g" \
+        -e 's/^\s\+\(-\w\)\s\+\([A-Z]\+\)\s\+\(.\+\)$/\1 *\2*\n:   \3\n/g' \
+        -e 's/^\s\+\(-\w\)\s\+\([<>a-z0-9|]\+\)\s\+\(.\+\)$/\1 *\2*\n:   \3\n/g' \
+        -e 's/^\s\+\(-\w\)\s\+\(.\+\)/\1\n:   \2\n/g' \
+        -e 's/^\s\+\([][a-zA-Z0-9<> |.-]\+\)\s\+\([A-Z][a-z].\+\)$/\1\n:   \2\n/g' \
+        -e '/^Available backends:.*$/,+2d' \
+        -e '/^Hints:.*$/,+2d' \
+        -e 's/<\([\|a-z]\+\)>/\&lt;\1\&gt;/g' \
+        -e 's/\[\(\w\+\)\]/[*\1*]/g' \
+        -e 's/<\(\w\+\)>/<*\1*>/g' \
+        -e '/^Defaults:/d' \
+        -e 's/^Note:/## Note\n/' \
+        "${file}"
+}
+
+gen_authors() {
+    local authors=$(printf ,"%s " "${AUTHORS[@]}")
+    echo "${authors:1}"
+}
+
+usage() {
+    cat<<EOF
+Usage: $(basename $0) [OPTIONS] <filename> [<filename>...]
+
+Options:
+  -h        Show this help message
+  -v        Show version information
+  -a NAME   Set author name
+  -d TEXT   Set short description
+  -t TITLE  Set MAN page title to TITLE
+  -C        Generate complex MAN page(s)
+  -D TEXT   Set long description
+  -O DIR    Set output directory to DIR
+EOF
+}
+
+while getopts "hva:d:t:CD:O:" option; do
+    case ${option} in
+        h)
+            usage; exit 0
+            ;;
+        v)
+            echo ${__VERSION__}; exit 0
+            ;;
+        a)
+            AUTHORS+=("${OPTARG}")
+            ;;
+        d)
+            DESCRIPTION_SHORT=${OPTARG}
+            ;;
+        t)
+            TITLE=${OPTARG}
+            ;;
+        C)
+            COMPLEX=y
+            ;;
+        D)
+            DESCRIPTION_LONG=${OPTARG}
+            ;;
+        O)
+            DESTDIR=${OPTARG}
+            ;;
+        *)
+            echo "Unknown option" >&2; exit 1
+            ;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+if [ $# -lt 1 ]; then
+    usage
+    exit 2
+fi
+
+if [ -n "${COMPLEX}" ]; then
+    gen_man_pages_complex "${@}"
+else
+    gen_man_pages "${@}"
+fi
+
+# vim: ts=4 sts=4 sw=4 et ai
