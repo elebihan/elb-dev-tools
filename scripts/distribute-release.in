@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+#
+# distribute-release - make distributable tarball
+#
+# Copyright (C) 2017 Eric Le Bihan <eric.le.bihan.dev@free.fr>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
+set -e
+
+__VERSION__=@VERSION@
+
+RECIPIENTS_FILE=
+EMITTER="${DEBEMAIL}"
+DESTDIR=$PWD
+
+usage() {
+    cat<<EOF
+Usage: $(basename $0) [OPTIONS] <clone>
+
+Options:
+  -h        Show this help message
+  -v        Show version information
+  -f EMAIL  Set emitter mail address
+  -O DIR    Set output directory
+EOF
+}
+
+while getopts "hvf:O:" option; do
+    case ${option} in
+        h)
+            usage; exit 0
+            ;;
+        v)
+            echo ${__VERSION__}; exit 0
+            ;;
+        f)
+            EMITTER=${OPTARG}
+            ;;
+        O)
+            DESTDIR=${OPTARG}
+            ;;
+        *)
+            echo "Unknown option" >&2; exit 1
+            ;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+if [ $# -lt 1 ]; then
+    usage
+    exit 1
+fi
+
+clone=$1
+shift
+
+if [ -z "${EMITTER}" ]; then
+    echo "No emitter given" >&2
+    exit 3
+fi
+
+repo=$(git --git-dir "${clone}/.git" config --get remote.origin.url)
+version=$(git --git-dir "${clone}/.git"  describe --abbrev=0 --tags)
+project=$(basename "${repo%%.git}")
+# Use `git config --global tar.tar.xz.command "xz -c"` to get the following
+# format.
+format=tar.xz
+prefix=${project}-${version}/
+tarball=${DESTDIR}/${project}-${version}.${format}
+
+mkdir -p "${DESTDIR}"
+git archive --format=${format} --prefix=${prefix} --output=${tarball} ${version}
+gpg --recipient ${EMITTER} --detach-sign --armor ${tarball}
+
+# vim: ts=4 sts=4 sw=4 et ai
