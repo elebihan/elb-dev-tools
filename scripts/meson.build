@@ -1,6 +1,7 @@
 in_scripts = [
   'announce-release',
   'distribute-release',
+  'gen-icon-theme',
   'totoconf',
 ]
 

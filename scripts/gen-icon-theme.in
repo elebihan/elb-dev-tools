@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+#
+# gen-icon-theme - generate an icon theme from an image
+#
+# Copyright (C) 2014 Eric Le Bihan <eric.le.bihan.dev@free.fr>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+__VERSION__=@VERSION@
+
+SIZES="48x48 256x256 512x512"
+DESTDIR=$PWD
+COMMENT="An icon theme"
+
+join() {
+    local IFS="$1"; shift; echo "$*"
+}
+
+append() {
+    local tail="$1"; shift
+    for item in "$@"; do
+        echo -n " $item$tail"
+    done
+}
+
+usage() {
+    cat<<EOF
+Usage: $(basename $0) [OPTIONS] <theme> <filename>
+
+Options:
+  -h        Show this help message
+  -v        Show version information
+  -c TEXT   Set theme description
+  -o DIR    Set output directory
+EOF
+}
+
+while getopts "hvc:o:" option; do
+    case $option in
+        h)
+            usage; exit 0
+            ;;
+        v)
+            echo $__VERSION__; exit 0
+            ;;
+        c)
+            COMMENT=$OPTARG
+            ;;
+        o)
+            DESTDIR=$OPTARG
+            ;;
+        *)
+            echo "Unknown option" >&2; exit 1
+            ;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+
+if [ $# -ne 2 ]; then
+    usage
+    exit 2
+fi
+
+theme=$1
+filename=$2
+
+convert --version &>/dev/null || {
+    echo "Can not find the program 'convert'. Please install 'ImageMagick'" >&2
+    exit 3
+}
+
+mkdir -p $DESTDIR/icons/$theme
+echo "SUBDIRS = $theme" > $DESTDIR/icons/Makefile.am
+cat <<EOF > $DESTDIR/icons/$theme/Makefile.am
+SUBDIRS = $SIZES
+
+EXTRA_DIST = index.theme
+
+fake_index_theme_target =
+
+if PLATFORM_WIN32
+fake_index_theme_target += install-fake-index-theme
+
+install-fake-index-theme: index.theme
+	install -m 0644 index.theme \$(datadir)/icons/$theme/index.theme
+endif
+
+install-data-hook: \$(fake_index_theme_target)
+EOF
+
+cat <<EOF > $DESTDIR/icons/$theme/index.theme
+[Icon Theme]
+Name=${theme[@]^}
+Comment=$COMMENT
+Hidden=true
+Directories=$(join , $(append /apps $SIZES))
+EOF
+
+for size in $SIZES; do
+    cat <<EOF >> $DESTDIR/icons/$theme/index.theme
+
+[$size/apps]
+Size=${size%x*}
+Context=Applications
+Type=Threshold
+EOF
+    mkdir -p $DESTDIR/icons/$theme/$size/apps
+    echo "SUBDIRS = apps" > $DESTDIR/icons/$theme/$size/Makefile.am
+    cat <<EOF > $DESTDIR/icons/$theme/$size/apps/Makefile.am
+themedir = \$(datadir)/icons/$theme
+size = $size
+context = apps
+
+iconsdir = \$(themedir)/\$(size)/\$(context)
+
+icons_DATA = $(basename $filename)
+
+EXTRA_DIST = \$(icons_DATA)
+EOF
+    convert $filename \
+        -resize $size $DESTDIR/icons/$theme/$size/apps/$(basename $filename)
+done
+
+# vim: ts=4 sts=4 sw=4 et ai
