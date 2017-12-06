@@ -5,6 +5,7 @@ developing some projects.
 
 ## Dependencies
 
+- [Meson](http://mesonbuild.com/)
 - [Ninja](https://ninja-build.org/) (version 1.7 or newer)
 
 ## Installing from source
@@ -13,7 +14,7 @@ To configure and build the project, execute:
 
 ```
 mkdir build
-meson build
+meson . build
 ninja -C build
 ```
 
