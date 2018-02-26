@@ -48,7 +48,9 @@ find_exec_target() {
 }
 
 find_exec_debug() {
-    find "$1/build" -executable -name $2
+    find "$1/build" -type f -executable -name $2 -printf "%A@ %p\n" \
+        | sort -r \
+        | awk 'NR==1 { print $2 }'
 }
 
 check_basedir() {
