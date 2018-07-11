@@ -1,0 +1,278 @@
+#!/usr/bin/env bash
+#
+# scribble-release - update version file and changelog
+#
+# Copyright (C) 2018 Eric Le Bihan <eric.le.bihan.dev@free.fr>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
+__VERSION__=@VERSION@
+
+COMMIT=yes
+KICK_OFF=no
+ONLY_CHANGELOG=no
+VERSION_FILE=VERSION
+
+error() {
+    echo "ERROR: $1" >&2
+}
+
+croak() {
+    error "$1"
+    return 1
+}
+
+die() {
+    error "$1"
+    exit 111
+}
+
+compute_cycle() {
+    local version=$1
+    echo "${version}"
+}
+
+strip_version() {
+    echo $1 | rev | cut -d'-' -f 1 | rev
+}
+
+commit_file() {
+    local file=$1
+    local message=$(mktemp -t "$(basename $0).msg.XXXXX")
+
+    cat<<EOF>"${message}"
+$2
+
+${MESSAGE}
+EOF
+
+    if [ "${COMMIT}" = "yes" ]; then
+        git commit -F "${message}" "${file}"
+    fi
+
+    rm -f "${message}"
+}
+
+edit_version() {
+    local clone=$1
+    local version=$2
+    local kick_off=$3
+    local message=
+    local path=
+    local prefix=
+    local cycle=$(compute_cycle ${version})
+
+    for file in configure.ac meson.build "${VERSION_FILE}"; do
+        path="${clone}/${file}"
+        if [ ! -f "${path}" ]; then
+            continue
+        fi
+        prefix=$(basename "${file}")
+        if [ "${kick_off}" = "yes" ]; then
+            message="kick off ${cycle} development cycle"
+        else
+            message="bump version to ${version}"
+        fi
+        case "${file}" in
+            "${VERSION_FILE}")
+                if [ -n " ${VERSION_FIELD}" ]; then
+                    sed -i \
+                        -e "s/^${VERSION_FIELD}.\+$/${VERSION_FIELD}${version}/g" \
+                        "${path}"
+                else
+                    echo "${version}" > "${path}"
+                fi
+                ;;
+            configure.ac)
+                ;;
+            meson.build)
+                ;;
+        esac
+        commit_file "${file}" "${prefix}: ${message}"
+    done
+}
+
+edit_changelog() {
+    local clone=$1
+    local version=$2
+    local kick_off=$3
+    local file="${clone}/NEWS.md"
+    local message="NEWS: update for ${version}"
+
+    if [ "${kick_off}" = "yes" ]; then
+        return
+    fi
+
+    if [ ! -f "${file}" ]; then
+        croak "can not find change log file"
+    fi
+
+    sed -i \
+        -e "s/^\(# .\+\)/\1\n\n## \[${version}\] - $(date +'%Y-%m-%d')/" \
+        "${file}"
+    sed -i -e "3 a %ADDED%\n%CHANGED%\n%FIXED%" "${file}"
+    sed -i -e "/%FIXED%/{n;d}" "${file}"
+
+    insert_details additions "${clone}" "${file}" || croak "can not insert additions"
+    insert_details changes "${clone}" "${file}" || croak "can not insert changes"
+    insert_details fixes "${clone}" "${file}" || croak "can not insert fixes"
+
+    commit_file "${file}" "${message}"
+}
+
+generate_history() {
+    local version="${START_TAG}"
+
+    if [ -z "${version}" ]; then
+        version=$(git --git-dir "${clone}/.git"  describe --abbrev=0 --tags)
+    fi
+
+    git --git-dir "${clone}/.git" log \
+        --reverse \
+        --invert-grep \
+        --grep='^configure.*[Kk]ick off' \
+        --grep='^configure.*: [Bb]ump' \
+        --grep='^meson.*: [Kk]ick off' \
+        --grep='^meson.*: [Bb]ump' \
+        --grep="^$(basename ${VERSION_FILE})" \
+        --grep='^Merge' \
+        --grep='^Squash' \
+        --pretty=format:"- %s" "${version}..HEAD"
+}
+
+filter_history() {
+    case $1 in
+        additions)
+            grep -i -e new -e add
+        ;;
+        changes)
+            grep -i -e change -e select -e enable -e decrease -e increase \
+                 -e bump
+        ;;
+        fixes)
+            grep -i -e fix
+        ;;
+    esac
+}
+
+insert_details() {
+    local mark
+    local title
+    local details=$(mktemp -t "$(basename $0).details.XXXXXX")
+
+    case "$1" in
+        additions)
+            mark=%ADDED%
+            title=Added
+            ;;
+        changes)
+            mark=%CHANGED%
+            title=Changed
+            ;;
+        fixes)
+            mark=%FIXED%
+            title=Fixed
+            ;;
+        *)
+            croak "invalid details category"
+            ;;
+    esac
+
+    generate_history $2 | filter_history $1 | sort > "${details}"
+
+    if [ -s "${details}" ]; then
+        sed -i \
+            -e "/${mark}/{a ### ${title}\n" -e "r ${details}" -e 'a \\' -e 'd}' \
+            $3
+    else
+        sed -i -e "/${mark}/,+1d" $3
+    fi
+
+    rm -f "${details}"
+}
+
+usage() {
+    cat<<EOF
+Usage: $(basename "$0") [OPTIONS] <clone> <version>
+
+Options:
+  -h        Show this help message
+  -v        Show version information
+  -c        Only update changelog
+  -k        Kick off new release cycle
+  -n        Do not commit changes
+  -F FIELD  Set version field to FIELD
+  -M TEXT   Append TEXT to commit messages
+  -S TAG    Generate changelog since TAG
+  -V FILE   Use FILE as version file
+EOF
+}
+
+while getopts "hvcknF:M:S:V:" option; do
+    case ${option} in
+        h)
+            usage; exit 0
+            ;;
+        v)
+            echo ${__VERSION__}; exit 0
+            ;;
+        c)
+            ONLY_CHANGELOG=yes
+            ;;
+        k)
+            KICK_OFF=yes
+            ;;
+        n)
+            COMMIT=no
+            ;;
+        F)
+            VERSION_FIELD=${OPTARG}
+            ;;
+        M)
+            MESSAGE=${OPTARG}
+            ;;
+        S)
+            START_TAG=${OPTARG}
+            ;;
+        V)
+            VERSION_FILE=${OPTARG}
+            ;;
+        *)
+            echo "Unknown option" >&2; exit 1
+            ;;
+    esac
+done
+
+shift $((OPTIND - 1))
+
+if [ $# -ne 2 ]; then
+    usage
+    exit 1
+fi
+
+clone=$1
+version=$(strip_version $2)
+
+if [ "${ONLY_CHANGELOG}" = "no" ]; then
+    if ! edit_version "${clone}" "${version}" "${KICK_OFF}"; then
+        die "can not edit version"
+    fi
+fi
+
+if ! edit_changelog "${clone}" "${version}" "${KICK_OFF}"; then
+   die "can not edit changelog"
+fi
+
+# vim: ts=4 sts=4 sw=4 et ai
