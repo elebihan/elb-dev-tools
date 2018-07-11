@@ -42,6 +42,7 @@ find_exec_target() {
         $1/target/sbin
         $1/target/usr/bin
         $1/target/usr/sbin
+        $1/target/usr/libexec
     )
     local path=$(find  "${paths[@]}" -executable -name $2)
     echo "${path/$1\/target}"
