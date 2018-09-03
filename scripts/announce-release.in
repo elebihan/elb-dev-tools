@@ -103,7 +103,7 @@ if [ -z "${EMITTER}" ]; then
     exit 3
 fi
 
-for r in $@; do
+for r in "$@"; do
     recipients="${r}, ${recipients}"
 done
 
