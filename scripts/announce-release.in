@@ -108,8 +108,10 @@ for r in "$@"; do
 done
 
 if [ -f "${RECIPIENTS_FILE}" ]; then
-   while read -r r; do
-       recipients="${r}, ${recipients}"
+    while read -r r; do
+        if ! grep -q -e '^#' <<< "${r}"; then
+            recipients="${r}, ${recipients}"
+        fi
    done < "${RECIPIENTS_FILE}"
 fi
 
