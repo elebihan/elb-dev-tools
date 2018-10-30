@@ -73,7 +73,7 @@ EOF
 
 usage() {
     cat<<EOF
-Usage: $(basename $0) [OPTIONS] <clone> [<recipient>, ...]
+Usage: $(basename $0) [OPTIONS] <path> [<recipient>, ...]
 
 Options:
   -h        Show this help message
@@ -123,7 +123,7 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-clone=$1
+path=$1
 shift
 
 if [ $# -eq 0 -a -z "${RECIPIENTS_FILE}" ]; then
@@ -148,14 +148,14 @@ if [ -f "${RECIPIENTS_FILE}" ]; then
    done < "${RECIPIENTS_FILE}"
 fi
 
-url=$(git --git-dir "${clone}/.git" config --get remote.origin.url)
-version=$(git --git-dir "${clone}/.git"  describe --abbrev=0 --tags)
+url=$(git --git-dir "${path}/.git" config --get remote.origin.url)
+version=$(git --git-dir "${path}/.git"  describe --abbrev=0 --tags)
 project=$(basename "${url%%.git}")
 
 if [ -n "${TEXT_FILE}" ]; then
     text=$(cat "${TEXT_FILE}")
 else
-    text=$(changes ${clone} ${version})
+    text=$(changes ${path} ${version})
 fi
 
 if [ -z "${TEMPLATE}" ]; then
