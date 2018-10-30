@@ -47,6 +47,30 @@ signature() {
     fi
 }
 
+default_template() {
+    local template=$(mktemp -t "$(basename "$0")-XXXXXX.mail.mustache")
+
+    cat <<EOF > "${template}"
+From: {{emitter}}
+To: {{recipients}}
+Subject: [{{prefix}}] {{project}} {{version}} is available
+bcc: {{emitter}}
+
+Hi!
+
+Version {{version}} of {{project}} is available in its repository [1].
+
+[1] {{url}}
+{{changes}}
+
+Regards,
+
+{{signature}}
+EOF
+
+    echo "${template}"
+}
+
 usage() {
     cat<<EOF
 Usage: $(basename $0) [OPTIONS] <clone> [<recipient>, ...]
@@ -57,10 +81,11 @@ Options:
   -f EMAIL  Set emitter mail address
   -i FILE   Read recipients from FILE
   -p PREFIX Set subject prefix
+  -t FILE   Set mail template
 EOF
 }
 
-while getopts "hvf:i:p:" option; do
+while getopts "hvf:i:p:t:" option; do
     case ${option} in
         h)
             usage; exit 0
@@ -77,6 +102,10 @@ while getopts "hvf:i:p:" option; do
         p)
             PREFIX=${OPTARG}
             ;;
+        t)
+            TEMPLATE=${OPTARG}
+            ;;
+
         *)
             echo "Unknown option" >&2; exit 1
             ;;
@@ -118,25 +147,12 @@ fi
 url=$(git --git-dir "${clone}/.git" config --get remote.origin.url)
 version=$(git --git-dir "${clone}/.git"  describe --abbrev=0 --tags)
 project=$(basename "${url%%.git}")
-template=$(mktemp -t "$(basename "$0")-XXXXXX.mail.mustache")
 
-cat <<EOF > "${template}"
-From: {{emitter}}
-To: {{recipients}}
-Subject: [{{prefix}}] {{project}} {{version}} is available
-bcc: {{emitter}}
-
-Hi!
-
-Version {{version}} of {{project}} is available in its repository [1].
-
-[1] {{url}}
-{{changes}}
-
-Regards,
-
-{{signature}}
-EOF
+if [ -z "${TEMPLATE}" ]; then
+    template=$(default_template)
+else
+    template="${TEMPLATE}"
+fi
 
 sed -e "s%{{emitter}}%${EMITTER}%g" \
     -e "s%{{recipients}}%${recipients}%g" \
@@ -151,6 +167,8 @@ sed -e "s%{{emitter}}%${EMITTER}%g" \
           'NR=1, /{{signature}}/ { sub(/{{signature}}/, signature) } 1'
 
 
-rm -f "${template}"
+if [ -z "${TEMPLATE}" ]; then
+    rm -f "${template}"
+fi
 
 # vim: ts=4 sts=4 sw=4 et ai
