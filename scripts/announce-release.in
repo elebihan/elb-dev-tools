@@ -147,6 +147,7 @@ fi
 url=$(git --git-dir "${clone}/.git" config --get remote.origin.url)
 version=$(git --git-dir "${clone}/.git"  describe --abbrev=0 --tags)
 project=$(basename "${url%%.git}")
+text=$(changes ${clone} ${version})
 
 if [ -z "${TEMPLATE}" ]; then
     template=$(default_template)
@@ -161,8 +162,8 @@ sed -e "s%{{emitter}}%${EMITTER}%g" \
     -e "s%{{version}}%${version}%g" \
     -e "s%{{url}}%${url}%g" \
     "${template}" \
-    | awk -v changes="$(changes ${clone} ${version})" \
-          'NR=1, /{{changes}}/ { sub(/{{changes}}/, changes) } 1' \
+    | awk -v text="${text}" \
+          'NR=1, /{{text}}/ { sub(/{{text}}/, text) } 1' \
     | awk -v signature="$(signature)" \
           'NR=1, /{{signature}}/ { sub(/{{signature}}/, signature) } 1'
 
