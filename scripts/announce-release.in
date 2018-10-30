@@ -82,10 +82,11 @@ Options:
   -i FILE   Read recipients from FILE
   -p PREFIX Set subject prefix
   -t FILE   Set mail template
+  -T FILE   Set text from FILE
 EOF
 }
 
-while getopts "hvf:i:p:t:" option; do
+while getopts "hvf:i:p:t:T:" option; do
     case ${option} in
         h)
             usage; exit 0
@@ -104,6 +105,9 @@ while getopts "hvf:i:p:t:" option; do
             ;;
         t)
             TEMPLATE=${OPTARG}
+            ;;
+        T)
+            TEXT_FILE=${OPTARG}
             ;;
 
         *)
@@ -147,7 +151,12 @@ fi
 url=$(git --git-dir "${clone}/.git" config --get remote.origin.url)
 version=$(git --git-dir "${clone}/.git"  describe --abbrev=0 --tags)
 project=$(basename "${url%%.git}")
-text=$(changes ${clone} ${version})
+
+if [ -n "${TEXT_FILE}" ]; then
+    text=$(cat "${TEXT_FILE}")
+else
+    text=$(changes ${clone} ${version})
+fi
 
 if [ -z "${TEMPLATE}" ]; then
     template=$(default_template)
