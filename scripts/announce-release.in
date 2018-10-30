@@ -115,9 +115,9 @@ if [ -f "${RECIPIENTS_FILE}" ]; then
    done < "${RECIPIENTS_FILE}"
 fi
 
-repo=$(git --git-dir "${clone}/.git" config --get remote.origin.url)
+url=$(git --git-dir "${clone}/.git" config --get remote.origin.url)
 version=$(git --git-dir "${clone}/.git"  describe --abbrev=0 --tags)
-project=$(basename "${repo%%.git}")
+project=$(basename "${url%%.git}")
 
 cat <<EOF
 From: ${EMITTER}
@@ -129,7 +129,7 @@ Hi!
 
 Version ${version} of ${project} is available in its repository [1].
 
-[1] ${repo}
+[1] ${url}
 $(changes ${clone} ${version})
 
 Regards,
