@@ -148,9 +148,13 @@ if [ -f "${RECIPIENTS_FILE}" ]; then
    done < "${RECIPIENTS_FILE}"
 fi
 
-url=$(git --git-dir "${path}/.git" config --get remote.origin.url)
-version=$(git --git-dir "${path}/.git"  describe --abbrev=0 --tags)
-project=$(basename "${url%%.git}")
+if [ -d "${path}" ]; then
+    url=$(git --git-dir "${path}/.git" config --get remote.origin.url)
+    version=$(git --git-dir "${path}/.git"  describe --abbrev=0 --tags)
+    project=$(basename "${url%%.git}")
+else
+    url="${path}"
+fi
 
 if [ -n "${TEXT_FILE}" ]; then
     text=$(cat "${TEXT_FILE}")
