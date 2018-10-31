@@ -168,13 +168,16 @@ else
     template="${TEMPLATE}"
 fi
 
-sed -e "s%{{emitter}}%${EMITTER}%g" \
-    -e "s%{{recipients}}%${recipients}%g" \
-    -e "s%{{prefix}}%${PREFIX}%g" \
-    -e "s%{{project}}%${project}%g" \
-    -e "s%{{version}}%${version}%g" \
-    -e "s%{{url}}%${url}%g" \
-    "${template}" \
+sed_opts=(
+    -e "s%{{emitter}}%${EMITTER}%g"
+    -e "s%{{recipients}}%${recipients}%g"
+    -e "s%{{prefix}}%${PREFIX}%g"
+    -e "s%{{project}}%${project}%g"
+    -e "s%{{version}}%${version}%g"
+    -e "s%{{url}}%${url}%g"
+)
+
+sed "${sed_opts[@]}" "${template}" \
     | awk -v text="${text}" \
           'NR=1, /{{text}}/ { sub(/{{text}}/, text) } 1' \
     | awk -v signature="$(signature)" \
