@@ -24,6 +24,8 @@ RECIPIENTS_FILE=
 EMITTER="${DEBFULLNAME} <${DEBEMAIL}>"
 PREFIX="ANNOUNCE"
 
+declare -A PARAMETERS
+
 changes() {
     local path=$1
     local version=$(sed 's/^[a-z]\+-//g' <<< $2)
@@ -82,11 +84,12 @@ Options:
   -i FILE   Read recipients from FILE
   -p PREFIX Set subject prefix
   -t FILE   Set mail template
+  -P K:V    Set K in template to value V
   -T FILE   Set text from FILE
 EOF
 }
 
-while getopts "hvf:i:p:t:T:" option; do
+while getopts "hvf:i:p:t:P:T:" option; do
     case ${option} in
         h)
             usage; exit 0
@@ -105,6 +108,9 @@ while getopts "hvf:i:p:t:T:" option; do
             ;;
         t)
             TEMPLATE=${OPTARG}
+            ;;
+        P)
+            PARAMETERS[${OPTARG%%:*}]=${OPTARG##*:}
             ;;
         T)
             TEXT_FILE=${OPTARG}
@@ -176,6 +182,10 @@ items['prefix']="${PREFIX}"
 items['project']="${project}"
 items['version']="${version}"
 items['url']="${url}"
+
+for key in "${!PARAMETERS[@]}"; do
+    items[${key}]=${PARAMETERS[$key]}
+done
 
 declare -a sed_opts
 
