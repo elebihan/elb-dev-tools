@@ -168,14 +168,20 @@ else
     template="${TEMPLATE}"
 fi
 
-sed_opts=(
-    -e "s%{{emitter}}%${EMITTER}%g"
-    -e "s%{{recipients}}%${recipients}%g"
-    -e "s%{{prefix}}%${PREFIX}%g"
-    -e "s%{{project}}%${project}%g"
-    -e "s%{{version}}%${version}%g"
-    -e "s%{{url}}%${url}%g"
-)
+declare -A items
+
+items['emitter']="${EMITTER}"
+items['recipients']="${recipients}"
+items['prefix']="${PREFIX}"
+items['project']="${project}"
+items['version']="${version}"
+items['url']="${url}"
+
+declare -a sed_opts
+
+for key in "${!items[@]}"; do
+    sed_opts+=(-e "s%{{${key}}}%${items[${key}]}%g")
+done
 
 sed "${sed_opts[@]}" "${template}" \
     | awk -v text="${text}" \
