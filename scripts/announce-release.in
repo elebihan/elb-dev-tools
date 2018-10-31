@@ -24,6 +24,8 @@ RECIPIENTS_FILE=
 EMITTER="${DEBFULLNAME} <${DEBEMAIL}>"
 PREFIX="ANNOUNCE"
 
+declare -A PARAMETERS
+
 changes() {
     local path=$1
     local version=$(sed 's/^[a-z]\+-//g' <<< $2)
@@ -47,9 +49,33 @@ signature() {
     fi
 }
 
+default_template() {
+    local template=$(mktemp -t "$(basename "$0")-XXXXXX.mail.mustache")
+
+    cat <<EOF > "${template}"
+From: {{emitter}}
+To: {{recipients}}
+Subject: [{{prefix}}] {{project}} {{version}} is available
+bcc: {{emitter}}
+
+Hi!
+
+Version {{version}} of {{project}} is available in its repository [1].
+
+[1] {{url}}
+{{changes}}
+
+Regards,
+
+{{signature}}
+EOF
+
+    echo "${template}"
+}
+
 usage() {
     cat<<EOF
-Usage: $(basename $0) [OPTIONS] <clone> [<recipient>, ...]
+Usage: $(basename $0) [OPTIONS] <path> [<recipient>, ...]
 
 Options:
   -h        Show this help message
@@ -57,10 +83,13 @@ Options:
   -f EMAIL  Set emitter mail address
   -i FILE   Read recipients from FILE
   -p PREFIX Set subject prefix
+  -t FILE   Set mail template
+  -P K:V    Set K in template to value V
+  -T FILE   Set text from FILE
 EOF
 }
 
-while getopts "hvf:i:p:" option; do
+while getopts "hvf:i:p:t:P:T:" option; do
     case ${option} in
         h)
             usage; exit 0
@@ -77,6 +106,16 @@ while getopts "hvf:i:p:" option; do
         p)
             PREFIX=${OPTARG}
             ;;
+        t)
+            TEMPLATE=${OPTARG}
+            ;;
+        P)
+            PARAMETERS[${OPTARG%%:*}]=${OPTARG##*:}
+            ;;
+        T)
+            TEXT_FILE=${OPTARG}
+            ;;
+
         *)
             echo "Unknown option" >&2; exit 1
             ;;
@@ -90,7 +129,7 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-clone=$1
+path=$1
 shift
 
 if [ $# -eq 0 -a -z "${RECIPIENTS_FILE}" ]; then
@@ -115,26 +154,54 @@ if [ -f "${RECIPIENTS_FILE}" ]; then
    done < "${RECIPIENTS_FILE}"
 fi
 
-repo=$(git --git-dir "${clone}/.git" config --get remote.origin.url)
-version=$(git --git-dir "${clone}/.git"  describe --abbrev=0 --tags)
-project=$(basename "${repo%%.git}")
+if [ -d "${path}" ]; then
+    url=$(git --git-dir "${path}/.git" config --get remote.origin.url)
+    version=$(git --git-dir "${path}/.git"  describe --abbrev=0 --tags)
+    project=$(basename "${url%%.git}")
+else
+    url="${path}"
+fi
 
-cat <<EOF
-From: ${EMITTER}
-To: ${recipients}
-Subject: [${PREFIX}] ${project} ${version} is available
-bcc: ${EMITTER}
+if [ -n "${TEXT_FILE}" ]; then
+    text=$(cat "${TEXT_FILE}")
+else
+    text=$(changes ${path} ${version})
+fi
 
-Hi!
+if [ -z "${TEMPLATE}" ]; then
+    template=$(default_template)
+else
+    template="${TEMPLATE}"
+fi
 
-Version ${version} of ${project} is available in its repository [1].
+declare -A items
 
-[1] ${repo}
-$(changes ${clone} ${version})
+items['emitter']="${EMITTER}"
+items['recipients']="${recipients}"
+items['prefix']="${PREFIX}"
+items['project']="${project}"
+items['version']="${version}"
+items['url']="${url}"
 
-Regards,
+for key in "${!PARAMETERS[@]}"; do
+    items[${key}]=${PARAMETERS[$key]}
+done
 
-$(signature)
-EOF
+declare -a sed_opts
+
+for key in "${!items[@]}"; do
+    sed_opts+=(-e "s%{{${key}}}%${items[${key}]}%g")
+done
+
+sed "${sed_opts[@]}" "${template}" \
+    | awk -v text="${text}" \
+          'NR=1, /{{text}}/ { sub(/{{text}}/, text) } 1' \
+    | awk -v signature="$(signature)" \
+          'NR=1, /{{signature}}/ { sub(/{{signature}}/, signature) } 1'
+
+
+if [ -z "${TEMPLATE}" ]; then
+    rm -f "${template}"
+fi
 
 # vim: ts=4 sts=4 sw=4 et ai
