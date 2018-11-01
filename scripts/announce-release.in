@@ -63,7 +63,7 @@ Hi!
 Version {{version}} of {{project}} is available in its repository [1].
 
 [1] {{url}}
-{{changes}}
+{{text}}
 
 Regards,
 
