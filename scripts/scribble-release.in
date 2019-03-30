@@ -167,11 +167,14 @@ filter_history() {
 }
 
 insert_details() {
+    local kind=$1
+    local clone=$2
+    local file=$3
     local mark
     local title
     local details=$(mktemp -t "$(basename $0).details.XXXXXX")
 
-    case "$1" in
+    case "${kind}" in
         additions)
             mark=%ADDED%
             title=Added
@@ -189,14 +192,14 @@ insert_details() {
             ;;
     esac
 
-    generate_history $2 | filter_history $1 | sort > "${details}"
+    generate_history "${clone}" | filter_history "${kind}" | sort > "${details}"
 
     if [ -s "${details}" ]; then
         sed -i \
             -e "/${mark}/{a ### ${title}\n" -e "r ${details}" -e 'a \\' -e 'd}' \
-            $3
+            "${file}"
     else
-        sed -i -e "/${mark}/,+1d" $3
+        sed -i -e "/${mark}/,+1d" "${file}"
     fi
 
     rm -f "${details}"
