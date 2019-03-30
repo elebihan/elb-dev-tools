@@ -158,8 +158,7 @@ filter_history() {
             grep -i -e new -e add
         ;;
         changes)
-            grep -i -e change -e select -e enable -e decrease -e increase \
-                 -e bump
+            grep -v -i -e new -e add -e fix
         ;;
         fixes)
             grep -i -e fix
