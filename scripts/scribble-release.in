@@ -199,7 +199,7 @@ insert_details() {
             -e "/${mark}/{a ### ${title}\n" -e "r ${details}" -e 'a \\' -e 'd}' \
             "${file}"
     else
-        sed -i -e "/${mark}/,+1d" "${file}"
+        sed -i -e "/${mark}/,+d" "${file}"
     fi
 
     rm -f "${details}"
