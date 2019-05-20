@@ -196,10 +196,10 @@ insert_details() {
 
     if [ -s "${details}" ]; then
         sed -i \
-            -e "/${mark}/{a ### ${title}\n" -e "r ${details}" -e 'a \\' -e 'd}' \
+            -e "/^${mark}$/{a ### ${title}\n" -e "r ${details}" -e 'a \\' -e 'd}' \
             "${file}"
     else
-        sed -i -e "/${mark}/,+d" "${file}"
+        sed -i -e "/^${mark}$/,+d" "${file}"
     fi
 
     rm -f "${details}"
