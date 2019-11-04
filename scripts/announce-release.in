@@ -190,7 +190,7 @@ done
 declare -a sed_opts
 
 for key in "${!items[@]}"; do
-    sed_opts+=(-e "s%{{${key}}}%${items[${key}]}%g")
+    sed_opts+=(-e "s|{{${key}}}|${items[${key}]}|g")
 done
 
 sed "${sed_opts[@]}" "${template}" \
