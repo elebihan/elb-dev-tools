@@ -1,0 +1,216 @@
+#!/usr/bin/env ruby
+#
+# nevez - Generate a changelog
+#
+# Copyright (C) 2020 Eric Le Bihan <eric.le.bihan.dev@free.fr>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
+require 'fileutils'
+require 'optparse'
+
+VERSION = '@VERSION@'.freeze
+
+# Represent a commit
+class Commit
+  attr_reader :id, :author, :date, :message, :brief
+
+  def initialize(id, author, date, message)
+    @id = id
+    @author = author
+    @date = date
+    @message = message
+    @brief = message.split(/\n/).first
+  end
+end
+
+def parse_log(log)
+  lines = log.split(/\n/)
+  id = lines.shift
+  author = lines.shift.to_s.split('Author: ')[1]
+  x = author.to_s.split(' ')
+  email = x.pop
+  name = x.join(' ')
+  author = { name: name, email: email }
+  date = lines.shift.to_s.split('Date: ')[1].to_s.strip
+  message = lines.drop(1).map(&:lstrip).join("\n")
+  Commit.new id, author, date, message
+end
+
+# Classify commit
+class CommitClassifier
+  def initialize
+    @add_patterns = [
+      Regexp.new('^([Aa]dd(?:ed)?|[Nn]ew)\s+.+'),
+      Regexp.new('^(?!Revert\b)\b.+:\s+([Aa]dd(?:ed)?|[Nn]ew)\s+.+')
+    ]
+    @fix_patterns = [
+      Regexp.new('^[Ff]ix(?:ed)?\s+.+'),
+      Regexp.new('^(?!Revert\b)\b.+:\s+[Ff]ix(?:ed)?\s+.+')
+    ]
+    @bmp_patterns = [
+      Regexp.new('^[Kk]ick off\s+.+'),
+      Regexp.new('^(?:configure|meson|CMakeLists|version):\s+[Kk[ick off\s+.+]]'),
+      Regexp.new('^[Bb]ump(?:ed)?\s+version.+'),
+      Regexp.new('^(?:configure|meson|CMakeLists|version):\s+[Bb]ump(?:ed)?\s+version.+'),
+      Regexp.new('^(version|VERSION):\s+[Bb]ump(?:ed)?.+')
+    ]
+  end
+
+  def addition?(message)
+    @add_patterns.any? { |e| e.match? message }
+  end
+
+  def fix?(message)
+    @fix_patterns.any? { |e| e.match? message }
+  end
+
+  def bump?(message)
+    @bmp_patterns.any? { |e| e.match? message }
+  end
+end
+
+def collect_commits(path, start)
+  logs = `git --git-dir #{path} log --no-merges --invert-grep --grep '^Squash' #{start}..HEAD`
+  logs = logs.split(/^commit /)
+  logs.shift
+  commits = logs.map { |log| parse_log log }
+  classifier = CommitClassifier.new
+  additions, others = commits.partition { |c| classifier.addition? c.brief }
+  fixes, others = others.partition { |c| classifier.fix? c.brief }
+  _, changes = others.partition { |c| classifier.bump? c.brief }
+  { additions: additions, changes: changes, fixes: fixes }
+end
+
+# Shorten commit messages
+class Shortener
+  def initialize
+    @bug_patterns = [
+      Regexp.new('^Bug\s[\d]+:.*'),
+      Regexp.new('^JIRA:\s[\w]+'),
+      Regexp.new('^CS[\d]+$')
+    ]
+  end
+
+  def shorten(message)
+    lines = message.split(/\n/)
+    bugs = lines.select { |line| @bug_patterns.any? { |p| p.match? line } }
+    extra = bugs.empty? ? '' : " (#{bugs.join(',')})"
+    "#{lines.first}#{extra}"
+  end
+end
+
+def make_section(level, header, items)
+  lines = '#' * level + ' ' + header + "\n\n"
+  lines += items.sort.map { |i| '- ' + i }.join("\n")
+  lines += "\n"
+  lines
+end
+
+def format_commits(commits, version)
+  headers = { additions: 'Added', changes: 'Changed', fixes: 'Fixed' }
+  sections = commits.merge(headers) do |_, o, n|
+    make_section(3, n, o) unless o.empty?
+  end
+  timestamp = Time.now.strftime('%Y-%m-%d')
+  title = "## [#{version}] - #{timestamp}\n"
+  title + sections.values.reject(&:nil?).join("\n") + "\n"
+end
+
+def update_changelog(path, text, in_place)
+  inserted = false
+  tmp = File.new(path + '.tmp', 'w') if in_place
+  File.open(path).each do |line|
+    if line =~ /^##\s+\[[\w.]+\]\s+-\s+[\d]{4}-[\d]{2}-[\d]{2}/
+      unless inserted
+        if in_place
+          tmp << text
+        else
+          puts text
+        end
+        inserted = true
+      end
+    end
+    if in_place
+      tmp << line
+    else
+      puts line
+    end
+  end
+  FileUtils.mv(tmp.path, path) if in_place
+end
+
+Options = Struct.new :repository, :changelog, :in_place
+
+# Command line option parser
+class Parser
+  def self.parse!
+    options = Options.new Dir.getwd, 'NEWS.md', false
+
+    parser = OptionParser.new do |p|
+      p.banner = "Usage: #{File.basename $PROGRAM_NAME} [OPTIONS] <old> <new>"
+      p.separator ''
+      p.separator 'Options:'
+      p.on('-h', '--help', 'Print help information') do
+        puts p
+        exit(-1)
+      end
+      p.on('-V', '--version', 'Print program version') do
+        puts VERSION
+        exit(-1)
+      end
+      p.on('-f', '--file PATH', 'Path to changelog') do |fn|
+        options[:changelog] = fn
+      end
+      p.on('-i', '--in-place', 'Edit changelog in place') do
+        options[:in_place] = true
+      end
+      p.on('-r', '--repository PATH', 'Path to repository') do |fn|
+        options[:repository] = fn
+      end
+    end
+
+    parser.parse!
+    options
+  end
+end
+
+options = Parser.parse!
+
+if ARGV.empty?
+  warn 'Missing argument(s)'
+  exit(-2)
+end
+
+begin
+  tag_old = ARGV.shift
+  tag_new = ARGV.shift
+  raise 'Missing new version' unless tag_new
+
+  s = Shortener.new
+  path = File.join options[:repository], '.git'
+  commits = collect_commits path, tag_old
+  commits = commits.transform_values! do |a|
+    a.map { |c| s.shorten(c.message) }
+  end
+
+  text = format_commits commits, tag_new
+  update_changelog options[:changelog], text, options[:in_place]
+rescue StandardError => e
+  warn e.message
+  exit(-3)
+end
+
+# vim: ts=2 sw=2 et ai
