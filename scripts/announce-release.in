@@ -110,7 +110,7 @@ while getopts "hvf:i:p:t:P:T:" option; do
             TEMPLATE=${OPTARG}
             ;;
         P)
-            PARAMETERS[${OPTARG%%:*}]=${OPTARG##*:}
+            PARAMETERS[${OPTARG%%:*}]=${OPTARG#*:}
             ;;
         T)
             TEXT_FILE=${OPTARG}
