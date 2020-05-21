@@ -191,13 +191,17 @@ declare -a sed_opts
 
 for key in "${!items[@]}"; do
     sed_opts+=(-e "s|{{${key}}}|${items[${key}]}|g")
+    sed_opts+=(-e "s|{{#if ${key}}}|{{%if-true}}|g")
 done
 
 sed "${sed_opts[@]}" "${template}" \
     | awk -v text="${text}" \
           'NR=1, /{{text}}/ { sub(/{{text}}/, text) } 1' \
     | awk -v signature="$(signature)" \
-          'NR=1, /{{signature}}/ { sub(/{{signature}}/, signature) } 1'
+          'NR=1, /{{signature}}/ { sub(/{{signature}}/, signature) } 1' \
+    | sed -e "s|{{#if \(.\+\)}}|{{%if-false}}|g" \
+    | sed -e "/^{{%if-false}}/,/^{{\/if}}/d" \
+    | sed -e "/^{{%if-true}}/d" -e "/^{{\/if}}/d"
 
 
 if [ -z "${TEMPLATE}" ]; then
