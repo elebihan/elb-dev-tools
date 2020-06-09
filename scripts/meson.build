@@ -3,7 +3,7 @@ in_scripts = [
   'br2-gdb',
   'distribute-release',
   'gen-icon-theme',
-  'nevez',
+  'novinka',
   'scribble-release',
   'totoconf',
   'usage2mdman',
