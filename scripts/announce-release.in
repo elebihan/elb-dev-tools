@@ -12,22 +12,23 @@ __VERSION__=@VERSION@
 RECIPIENTS_FILE=
 EMITTER="${DEBFULLNAME} <${DEBEMAIL}>"
 PREFIX="ANNOUNCE"
+CHANGELOG="NEWS.md"
 
 declare -A PARAMETERS
 
 changes() {
     local path=$1
     local version=$(sed 's/^[a-z]\+-//g' <<< $2)
-    local changelog="${path}/NEWS.md"
+    local changelog_path="${path}/${CHANGELOG}"
 
-    test ! -r "${changelog}" && return 0
+    test ! -r "${changelog_path}" && return 0
 
     cat <<EOF
 
 Changes:
 
 \`\`\`
-$(sed "1,/^## \[${version}\].\+$/d;/^## .\+$/,\$d" ${changelog})
+$(sed "1,/^## \[${version}\].\+$/d;/^## .\+$/,\$d" ${changelog_path})
 \`\`\`
 EOF
 }
@@ -69,6 +70,7 @@ Usage: $(basename $0) [OPTIONS] <path> [<recipient>, ...]
 Options:
   -h        Show this help message
   -v        Show version information
+  -c FILE   Set changelog file name
   -f EMAIL  Set emitter mail address
   -i FILE   Read recipients from FILE
   -p PREFIX Set subject prefix
@@ -78,13 +80,16 @@ Options:
 EOF
 }
 
-while getopts "hvf:i:p:t:P:T:" option; do
+while getopts "hvf:i:p:t:P:T:c:" option; do
     case ${option} in
         h)
             usage; exit 0
             ;;
         v)
             echo ${__VERSION__}; exit 0
+            ;;
+        c)
+            CHANGELOG=${OPTARG}
             ;;
         f)
             EMITTER=${OPTARG}
