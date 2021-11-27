@@ -2,6 +2,7 @@ in_scripts = [
   'announce-release',
   'br2-gdb',
   'distribute-release',
+  'file2dts'
   'gen-icon-theme',
   'novinka',
   'scribble-release',

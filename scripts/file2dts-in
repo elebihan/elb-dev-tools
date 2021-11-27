@@ -1,0 +1,67 @@
+#!/bin/sh
+#
+# file2dts.in - convert a file to DTS node
+#
+# Copyright (C) 2021 Eric Le Bihan <eric.le.bihan.dev@free.fr>
+#
+# SPDX-License-Identifier: MIT
+#
+
+__VERSION__=@VERSION@
+
+convert() {
+    xxd -p $1 | tr -d '\n' | tr '[:lower:]' '[:upper:]' | sed -e 's/\(..\)/ \1/g'
+}
+
+usage() {
+    cat<<EOF
+Usage: $(basename "$0") [OPTIONS] <FILE> <NODE> <PROPERTY>
+
+Options:
+  -h        Show this help message
+  -v        Show version information
+  -o FILE   Set output file
+  -p NAME   Set a parent node NAME
+EOF
+}
+
+while getopts "hvo:p:" option; do
+    case ${option} in
+        h)
+            usage; exit 0
+            ;;
+        v)
+            echo ${__VERSION__}; exit 0
+            ;;
+        o)
+            OUTPUT=${OPTARG}
+            ;;
+        p)
+            PARENT=${OPTARG}
+            ;;
+        *)
+            echo "Unknown option" >&2; exit 1
+            ;;
+    esac
+done
+
+shift $((OPTIND - 1))
+
+if [ $# -ne 3 ]; then
+    usage
+    exit 2
+fi
+
+if [ -z ${OUTPUT} ]; then
+    OUTPUT=/dev/stdout
+fi
+
+if [ -n "${PARENT}" ]; then
+    printf "/ {\n\t%s {\n\t\t%s {\n\t\t\t%s = [$(convert $1) ];\n\t\t};\n\t};\n};\n" \
+           ${PARENT} $2 $3 >${OUTPUT}
+else
+    printf "/ {\n\t%s {\n\t\t%s = [$(convert $1) ];\n\t};\t\t\n};\n" \
+           $2 $3 >${OUTPUT}
+fi
+
+# vim: ts=4 sts=4 sw=4 et ai
