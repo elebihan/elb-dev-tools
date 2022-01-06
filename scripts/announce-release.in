@@ -178,8 +178,12 @@ items['version']="${version}"
 items['url']="${url}"
 
 for key in "${!PARAMETERS[@]}"; do
-    items[${key}]=${PARAMETERS[$key]}
-done
+    #sanitize ampersands for proper mustache parsing later on
+    items[${key}]=$(echo "${PARAMETERS[$key]}" |
+                        sed 's|\\&|\&|g' | #if user already escaped ampersand, remove it to end up with just ampersands
+                        sed 's|&|\\&|g' ) #escape any ampersand.
+
+ done
 
 declare -a sed_opts
 
